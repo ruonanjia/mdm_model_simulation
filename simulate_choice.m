@@ -3,8 +3,8 @@ close all
 
 %% trial set
 SAFE_REWARD = 5;
-% AMBIGUITIES = [25, 50, 75]./100;
-AMBIGUITIES = [24, 50, 74, 1]./100;
+AMBIGUITIES = [25, 50, 75]./100;
+% AMBIGUITIES = [24, 50, 74, 1]./100;
 % PROBABILITIES = [24, 50, 74]./100;
 PROBABILITIES = [25, 50, 75]./100;
 RISKY_REWARDS = [5, 8, 12, 25]; % Don't include 5
@@ -27,7 +27,7 @@ n_trials = length(values);
 
 gamma_fixed = -2.6;
 
-batch = '06022021';
+batch = '06032021';
 path_save = fullfile('E:/Ruonan/Projects in the lab/MDM Project/Medical Decision Making Imaging/MDM_imaging/Behavioral Analysis/simulation_results', batch);
 
 if ~exist(path_save)
@@ -38,30 +38,47 @@ end
 model_true = 'ambigNrisk';
 base = 0;
 
-MIN_PARAM_alpha = 0.2; MAX_PARAM_alpha = 1.5;
+MIN_PARAM_alpha1 = 0.2; MAX_PARAM_alpha1 = 1.5;
+MIN_PARAM_alpha2 = 0.2; MAX_PARAM_alpha2 = 1.5;
 MIN_PARAM_beta = -1.5; MAX_PARAM_beta = 1.5;
-get_alpha = @(n) MIN_PARAM_alpha + (rand(1, n) * (MAX_PARAM_alpha-MIN_PARAM_alpha)); %uniform
+get_alpha1 = @(n) MIN_PARAM_alpha1 + (rand(1, n) * (MAX_PARAM_alpha1-MIN_PARAM_alpha1)); %uniform
+get_alpha2 = @(n) MIN_PARAM_alpha2 + (rand(1, n) * (MAX_PARAM_alpha2-MIN_PARAM_alpha2)); %uniform
 get_beta = @(n) MIN_PARAM_beta + (rand(1, n) * (MAX_PARAM_beta-MIN_PARAM_beta)); %uniform
 
 REPETITIONS = 100;
 
 ids = [1:REPETITIONS];
+
 % generate parameters
-alphas = get_alpha(REPETITIONS);
-% alphas = repmat(0.5, 1, 100); % fix alphas
+
+% how to generate ratings?
+% assume a curvature alpha1 from objective value to rating
+% another curvature alpha2 from rating to subjective value
+alpha1s = get_alpha1(REPETITIONS); % value-rating curvature
+alpha2s = get_alpha2(REPETITIONS); % rating-SV curvature
+% alpha = alpha1*alpha2
+alphas = alpha1s.*alpha2s;
 betas = get_beta(REPETITIONS);
-% betas = 1.8 *(alphas + rand(size(alphas))-2.2) ;
-% betas = repmat(0.35, 1, 100); % fix betas
 gammas = gamma_fixed*ones(size(alphas)); % Stochastisity of preference
 
-choice_simulated = zeros(REPETITIONS*n_trials, 9);
+choice_simulated = zeros(REPETITIONS*n_trials, 12);
 
 % generate behavior
 for ii = 1:REPETITIONS
     id = ids(ii);
+    alpha1 = alpha1s(ii);
+    alpha2 = alpha2s(ii);
     alpha = alphas(ii);
     beta = betas(ii);
     gamma = gammas(ii);
+    
+    % generate ratings
+    ratings = values .^ alpha1; % generate trial-wise rating of a single subject
+    
+    % scale ratings to 0-100
+    rating_max = max(ratings);
+    k = 100/rating_max;
+    ratings = ratings .* k;
     
     choice_prob = choice_prob_ambigNrisk(...
         base, values_fixed, values,...
@@ -74,98 +91,33 @@ for ii = 1:REPETITIONS
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 2) = probs;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 3) = ambigs;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 4) = values;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 5) = alpha;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 6) = beta;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 7) = gamma;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 8) = choice_prob;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 9) = choice;
-    
-end
-
-choice_simulated = array2table(choice_simulated,...
-    'VariableNames', {'id','probs','ambigs', 'values',...
-    'alhpa', 'beta','gamma', 'choice_prob', 'choice'});
-
-simulation = struct(...
-    'choice', choice_simulated,...
-    'model', model_true,...
-    'alpha_range', [MIN_PARAM_alpha, MAX_PARAM_alpha],...
-    'beta_range', [MIN_PARAM_beta, MAX_PARAM_beta],...
-    'distribution', 'uniform');
-
-save(fullfile(path_save, 'simulation_ambigNrisk.mat'), 'simulation');
-
-%% generate behavior from repetitions
-model_true = 'ambigOnly';
-base = 0;
-
-MIN_PARAM_alpha1 = 0.2; MAX_PARAM_alpha1 = 1.5;
-MIN_PARAM_beta = -1.5; MAX_PARAM_beta = 1.5;
-get_alpha1 = @(n) MIN_PARAM_alpha1 + (rand(1, n) * (MAX_PARAM_alpha1-MIN_PARAM_alpha1)); %uniform
-get_beta = @(n) MIN_PARAM_beta + (rand(1, n) * (MAX_PARAM_beta-MIN_PARAM_beta)); %uniform
-
-REPETITIONS = 100;
-
-ids = [1:REPETITIONS];
-% generate parameters
-betas = get_beta(REPETITIONS);
-gammas = gamma_fixed*ones(size(betas)); % Stochastisity of preference
-
-% how to generate ratings?
-% assume a curvature alpha1 from objective value to rating
-% another curvature alpha2 from rating to subjective value
-alpha1s = get_alpha1(REPETITIONS); % value-rating curvature
-
-choice_simulated = zeros(REPETITIONS*n_trials, 10);
-
-% generate behavior
-for ii = 1:REPETITIONS
-    id = ids(ii);
-    alpha1 = alpha1s(ii);
-    beta = betas(ii);
-    gamma = gammas(ii);
-    
-    % generate ratings
-    ratings = values .^ alpha1; % generate trial-wise rating of a single subject
-    
-    % scale ratings to 0-100
-    rating_max = max(ratings);
-    k = 100/rating_max;
-    ratings = ratings .* k;
-    ratings_fixed = (values_fixed .^ alpha1) .* k;
-    
-    choice_prob = choice_prob_ambigOnly(...
-        base, ratings_fixed, ratings,...
-        probs_fixed, probs, ambigs,...
-        [gamma, beta], model_true);
-
-    choice = binornd(1, choice_prob);
-    
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 1) = id;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 2) = probs;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 3) = ambigs;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 4) = values;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 5) = ratings;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 6) = alpha1;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 7) = beta;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 8) = gamma;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 9) = choice_prob;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 10) = choice;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 7) = alpha2;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 8) = alpha;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 9) = beta;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 10) = gamma;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 11) = choice_prob;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 12) = choice;
     
 end
 
 choice_simulated = array2table(choice_simulated,...
-    'VariableNames', {'id','probs','ambigs', 'values','ratings',...
-    'alhpa1', 'beta','gamma', 'choice_prob', 'choice'});
+    'VariableNames', {'id','probs','ambigs', 'values', 'ratings',...
+    'alhpa1', 'alpha2', 'alhpa', 'beta','gamma',...
+    'choice_prob', 'choice'});
 
 simulation = struct(...
     'choice', choice_simulated,...
     'model', model_true,...
     'alpha1_range', [MIN_PARAM_alpha1, MAX_PARAM_alpha1],...
+    'alpha2_range', [MIN_PARAM_alpha2, MAX_PARAM_alpha2],...
     'beta_range', [MIN_PARAM_beta, MAX_PARAM_beta],...
+    'gamma_fixed', gamma_fixed,...
     'distribution', 'uniform');
 
-save(fullfile(path_save,'simulation_ambigOnly.mat'), 'simulation');
+save(fullfile(path_save, 'simulation_ambigNrisk.mat'), 'simulation');
+
 
 %% generate behavior from repetitions
 model_true = 'ambigNrisk_rating';
@@ -241,33 +193,27 @@ simulation = struct(...
     'alpha1_range', [MIN_PARAM_alpha1, MAX_PARAM_alpha1],...
     'alpha2_range', [MIN_PARAM_alpha2, MAX_PARAM_alpha2],...
     'beta_range', [MIN_PARAM_beta, MAX_PARAM_beta],...
+    'gamma_fixed', gamma_fixed,...
     'distribution', 'uniform');
 
-save(fullfile(path_save,'simulation_ambigOnly_rating.mat'), 'simulation');
+save(fullfile(path_save,'simulation_ambigNrisk_rating.mat'), 'simulation');
 
 %% generate behavior from repetitions
-model_true = 'ambigSVPar';
+model_true = 'ambigOnly';
 base = 0;
 
 MIN_PARAM_beta = -1.5; MAX_PARAM_beta = 1.5;
 get_beta = @(n) MIN_PARAM_beta + (rand(1, n) * (MAX_PARAM_beta-MIN_PARAM_beta)); %uniform
-get_sv = @(max_sv) sort(max_sv .* rand(1, 4)); % uniformly generate random monotonic numbers
+get_rating = @(max_rating) sort(max_rating .* rand(1, 4)); % uniformly generate random monotonic numbers
 
 
 REPETITIONS = 100;
-up_bound = 100; % subjective value upper bound
+up_bound_rating = 100; % rating upper bound
 
 ids = [1:REPETITIONS];
 % generate parameters
 betas = get_beta(REPETITIONS);
 gammas = gamma_fixed*ones(size(betas)); % Stochastisity of preference
-
-% how to generate SVs? from curvature?
-% assume a curvature alpha1 from objective value to rating
-% another curvature alpha2 from rating to subjective value
-% alpha1 * alpha2 = alpha
-% alpha1s = get_alpha1(REPETITIONS); % value-rating curvature
-% alpha2s = get_alpha2(REPETITIONS); % value-rating curvature
 
 choice_simulated = zeros(REPETITIONS*n_trials, 9);
 
@@ -277,8 +223,81 @@ for ii = 1:REPETITIONS
     beta = betas(ii);
     gamma = gammas(ii);
     
+    % generate ratings
+    ratings_four = get_rating(up_bound_rating); % generate trial-wise rating of a single subject
+
+    % create trial-wise ratings 
+    [~, value_par_idx] = ismember(values, RISKY_REWARDS);
+    % get the value parameter
+    ratings = ratings_four(value_par_idx)'; % change dimeinsion into 1 by n
+    
+    % scale ratings to 0-100
+    rating_max = max(ratings);
+    k = 100/rating_max;
+    ratings = ratings .* k;
+    ratings_fixed = min(ratings)*ones(size(probs));
+    
+    choice_prob = choice_prob_ambigOnly(...
+        base, ratings_fixed, ratings,...
+        probs_fixed, probs, ambigs,...
+        [gamma, beta], model_true);
+
+    choice = binornd(1, choice_prob);
+    
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 1) = id;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 2) = probs;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 3) = ambigs;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 4) = values;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 5) = ratings;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 6) = beta;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 7) = gamma;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 8) = choice_prob;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 9) = choice;
+    
+end
+
+choice_simulated = array2table(choice_simulated,...
+    'VariableNames', {'id','probs','ambigs', 'values','ratings',...
+    'beta','gamma', 'choice_prob', 'choice'});
+
+simulation = struct(...
+    'choice', choice_simulated,...
+    'model', model_true,...
+    'rating_up_bound', up_bound_rating,...
+    'beta_range', [MIN_PARAM_beta, MAX_PARAM_beta],...
+    'gamma_fixed', gamma_fixed,...
+    'distribution', 'uniform');
+
+save(fullfile(path_save,'simulation_ambigOnly.mat'), 'simulation');
+
+%% generate behavior from repetitions
+model_true = 'ambigSVPar';
+base = 0;
+gamma_fixed = -2.6;
+
+MIN_PARAM_beta = -1.5; MAX_PARAM_beta = 1.5;
+get_beta = @(n) MIN_PARAM_beta + (rand(1, n) * (MAX_PARAM_beta-MIN_PARAM_beta)); %uniform
+get_sv = @(max_sv) sort(max_sv .* rand(1, 4)); % uniformly generate random monotonic numbers
+
+
+REPETITIONS = 100;
+up_bound_sv = 100; % subjective value upper bound
+
+ids = [1:REPETITIONS];
+% generate parameters
+betas = get_beta(REPETITIONS);
+gammas = gamma_fixed*ones(size(betas)); % Stochastisity of preference
+
+choice_simulated = zeros(REPETITIONS*n_trials, 10);
+
+% generate behavior
+for ii = 1:REPETITIONS
+    id = ids(ii);
+    beta = betas(ii);
+    gamma = gammas(ii);
+    
     % generate subjective values
-    svs = get_sv(up_bound);
+    svs = get_sv(up_bound_sv);
     
     choice_prob = choice_prob_ambigNriskValPar(...
         base, values_fixed, values,...
@@ -291,28 +310,36 @@ for ii = 1:REPETITIONS
     [~, value_par_idx] = ismember(values, RISKY_REWARDS);
     % get the value parameter
     svs_trialwise = svs(value_par_idx)'; % change dimeinsion into 1 by n
+    
+    % ratings are svs scaled to 100
+    ratings = svs_trialwise;
+    rating_max = max(ratings);
+    k = 100/rating_max;
+    ratings = ratings .* k;
 
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 1) = id;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 2) = probs;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 3) = ambigs;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 4) = values;
     choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 5) = svs_trialwise;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 6) = beta;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 7) = gamma;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 8) = choice_prob;
-    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 9) = choice;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 6) = ratings;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 7) = beta;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 8) = gamma;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 9) = choice_prob;
+    choice_simulated((n_trials*(ii-1)+1):(n_trials*ii), 10) = choice;
     
 end
 
 choice_simulated = array2table(choice_simulated,...
-    'VariableNames', {'id','probs','ambigs', 'values','svs',...
+    'VariableNames', {'id','probs','ambigs', 'values','svs','ratings',...
     'beta','gamma', 'choice_prob', 'choice'});
 
 simulation = struct(...
     'choice', choice_simulated,...
     'model', model_true,...
-    'svs_up_bound', 'up_bound',...
+    'svs_up_bound', up_bound_sv,...
     'beta_range', [MIN_PARAM_beta, MAX_PARAM_beta],...
+    'gamma_fixed', gamma_fixed,...
     'distribution', 'uniform');
 
 save(fullfile(path_save,'simulation_ambigSVPar.mat'), 'simulation');
